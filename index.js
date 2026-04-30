@@ -21,9 +21,6 @@ import { querySOLR, deleteJobByUrl, upsertJobs } from "./solr.js";
 // CONFIGURATION CONSTANTS
 // ============================================================================
 
-// BCR's CIF/CUI (from ANAF)
-const COMPANY_CIF = "361757";
-
 // BCR job listings URL (SuccessFactors)
 const BCR_CAREERS_URL = "https://erstegroup-careers.com/bcr/go/bcr-careire/4305601/";
 
@@ -250,17 +247,17 @@ async function main() {
   const testOnlyOnePage = process.argv.includes("--test");
   
   try {
-    // Step 1: Get existing jobs count from Solr
-    console.log("=== Step 1: Get existing jobs count ===");
-    const existingResult = await querySOLR(COMPANY_CIF);
-    const existingCount = existingResult.numFound;
-    console.log(`Found ${existingCount} existing jobs in SOLR`);
-
-    // Step 2: Validate company via ANAF
+    // Step 2: Validate company via ANAF (this also gets the CIF)
     console.log("\n=== Step 2: Validate company via ANAF ===");
     const { company, cif } = await validateAndGetCompany();
     COMPANY_NAME = company;
     const localCif = cif;
+    
+    // Step 1: Get existing jobs count from Solr (moved here to use the dynamic CIF)
+    console.log("=== Step 1: Get existing jobs count ===");
+    const existingResult = await querySOLR(localCif);
+    const existingCount = existingResult.numFound;
+    console.log(`Found ${existingCount} existing jobs in SOLR`);
     
     // Step 3: Scrape jobs from BCR careers page
     const rawJobs = await scrapeBCRJobs();
@@ -297,7 +294,7 @@ async function main() {
     await upsertJobs(transformedPayload.jobs);
 
     // Step 7: Final count
-    const finalResult = await querySOLR(COMPANY_CIF);
+    const finalResult = await querySOLR(localCif);
     console.log(`\n📊 === SUMMARY ===`);
     console.log(`📊 Jobs existing in SOLR before scrape: ${existingCount}`);
     console.log(`📊 Jobs scraped from BCR website: ${scrapedCount}`);
