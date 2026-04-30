@@ -1,0 +1,20 @@
+{
+  "name": "banca-commerciala-romana-sa-nodejs-scraper",
+  "version": "1.0.0",
+  "description": "Web scraper pentru a aduce locurile de muncă de la BCR în platforma peviitor.ro",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "scrape": "node index.js",
+    "test": "echo \"Tests not implemented yet\" && exit 0"
+  },
+  "keywords": ["scraper", "jobs", "bcr", "peviitor", "nodejs"],
+  "author": "lavilapustea24",
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
