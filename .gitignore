@@ -1,6 +1,6 @@
 node_modules/
 .env
-jobs.json
-jobs_existing.json
-company.json
+*.json
 *.log
+!package.json
+!company.json
