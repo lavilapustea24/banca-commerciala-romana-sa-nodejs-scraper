@@ -24,7 +24,8 @@
   "jest": {
     "testEnvironment": "node",
     "transform": {},
-    "extensionsToTreatAsEsm": [".js"]
+    "extensionsToTreatAsEsm": [".js"],
+    "testMatch": ["**/tests/**/*.test.js"]
   },
   "engines": {
     "node": ">=16.0.0"

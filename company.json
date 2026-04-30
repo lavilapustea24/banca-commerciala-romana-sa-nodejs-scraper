@@ -1,0 +1,156 @@
+{
+  "validatedAt": "2026-04-30T16:57:53.492Z",
+  "source": "ANAF",
+  "brand": "BCR",
+  "anaf": {
+    "cui": 361757,
+    "fax": "",
+    "iban": "",
+    "name": "BANCA COMERCIALA ROMANA SA",
+    "phone": "0213100245",
+    "address": "ORHIDEELOR, 15D, Bucureşti, Bucureşti Sectorul 6",
+    "caenCode": "6419",
+    "inactive": false,
+    "splitVat": false,
+    "legalForm": "SA",
+    "postalCode": "",
+    "vatPeriods": [
+      {
+        "end": null,
+        "start": "1996-12-01",
+        "message": "",
+        "yearStart": ""
+      }
+    ],
+    "cashBasisVat": false,
+    "fiscalAddress": {
+      "county": "",
+      "number": "",
+      "street": "",
+      "country": "",
+      "locality": "",
+      "postalCode": ""
+    },
+    "inactiveSince": null,
+    "ownershipForm": "PROPR.PRIVATA-CAPITAL PRIVAT AUTOHTON SI STRAIN",
+    "vatRegistered": true,
+    "cashBasisVatEnd": null,
+    "fiscalAuthority": "Direcţia Generală de Administrare a Marilor Contribuabili",
+    "organizationForm": "PERSOANA JURIDICA",
+    "reactivatedSince": null,
+    "registrationDate": "23/01/1991",
+    "cashBasisVatStart": null,
+    "registrationState": "TRANSFER(SOSIRE) din data 05.05.2020",
+    "eFacturaRegistered": false,
+    "registrationNumber": "J1991000090407",
+    "headquartersAddress": {
+      "street": "ORHIDEELOR",
+      "number": "15D",
+      "locality": "Bucureşti",
+      "county": "Bucureşti Sectorul 6",
+      "country": "România",
+      "postalCode": ""
+    },
+    "administrators": [
+      {
+        "name": "SASU VICTOR",
+        "role": "reprezentant al persoanei juridice"
+      },
+      {
+        "name": "CHRISTINE CATASTA",
+        "role": "membru în consiliul de supraveghere"
+      },
+      {
+        "name": "DIMA DANA LUCIANA",
+        "role": "reprezentant legal"
+      },
+      {
+        "name": "DÖRFLER STEFN RUDOLF",
+        "role": "membru în consiliul de supraveghere"
+      },
+      {
+        "name": "GACEK HILDEGARD",
+        "role": "membru în consiliul de supraveghere"
+      },
+      {
+        "name": "KRAINER-SENGER-WEISS ELISABETH",
+        "role": "membru în consiliul de supraveghere"
+      },
+      {
+        "name": "MANFRED WIMMER",
+        "role": "membru în consiliul de supraveghere"
+      },
+      {
+        "name": "NEMOIANU DANIELA-CAMELIA",
+        "role": "membru în consiliul de supraveghere"
+      },
+      {
+        "name": "BUJATTI IRIS",
+        "role": "membru în consiliul de supraveghere"
+      },
+      {
+        "name": "THOMAS KOLARIK",
+        "role": "membru în directorat"
+      }
+    ],
+    "authorizedCaenCodes": [
+      "4619",
+      "5040",
+      "5226",
+      "5229",
+      "5829",
+      "6110",
+      "6120",
+      "6190",
+      "6201",
+      "6202",
+      "6203",
+      "6209",
+      "6210",
+      "6220",
+      "6290",
+      "6310",
+      "6311",
+      "6312",
+      "6391",
+      "6392",
+      "6399",
+      "6419",
+      "6420",
+      "6421",
+      "6492",
+      "6499",
+      "6512",
+      "6612",
+      "6619",
+      "6629",
+      "6630",
+      "6810",
+      "6811",
+      "6820",
+      "6831",
+      "6832",
+      "7010",
+      "7020",
+      "7022",
+      "8559"
+    ],
+    "onrcStatus": 1048,
+    "onrcStatusLabel": "Funcțiune",
+    "vatCheckedAt": "2026-04-30T16:21:11.985Z",
+    "vatStatus": "fresh"
+  },
+  "peviitor": null,
+  "summary": {
+    "company": "BANCA COMERCIALA ROMANA SA",
+    "cif": "361757",
+    "active": true,
+    "inactiveSince": null,
+    "reactivatedSince": null,
+    "address": "ORHIDEELOR, 15D, Bucureşti, Bucureşti Sectorul 6",
+    "registrationNumber": "J1991000090407",
+    "caenCode": "6419",
+    "vatRegistered": true,
+    "eFacturaRegistered": false
+  }
+}
