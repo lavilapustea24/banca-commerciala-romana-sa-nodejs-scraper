@@ -19,15 +19,13 @@ jobs:
           
       - name: Install dependencies
         run: npm install
-        
-      - name: Install Puppeteer Chromium
-        run: npx @puppeteer/browsers install chromium@latest --path .local-chromium
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: false
         
       - name: Run scraper
         run: npm run scrape
         env:
           SOLR_AUTH: ${{ secrets.SOLR_AUTH }}
-          PUPPETEER_EXECUTABLE_PATH: .local-chromium/chrome-linux64/chrome
           
       - name: Check for new jobs
         run: |
