@@ -1,9 +1,39 @@
 import { jest } from '@jest/globals';
 
+// Mock puppeteer module
+jest.mock('puppeteer', () => {
+  return {
+    launch: jest.fn().mockResolvedValue({
+      newPage: jest.fn().mockResolvedValue({
+        setUserAgent: jest.fn(),
+        goto: jest.fn().mockResolvedValue({
+          status: jest.fn().mockReturnValue(200)
+        }),
+        evaluate: jest.fn().mockImplementation((fn) => {
+          // Mock job page validation
+          return {
+            title: 'Test Job Title',
+            location: 'București',
+            description: 'Test job description with responsibilities and requirements',
+            hasJobIndicators: true,
+            isExpired: false,
+            isJobPage: true,
+            url: 'https://erstegroup-careers.com/bcr/job/test/123/',
+            pageTitle: 'Test Job'
+          };
+        }),
+        close: jest.fn().mockResolvedValue(undefined)
+      }),
+      close: jest.fn().mockResolvedValue(undefined)
+    });
+});
+
 describe('index.js', () => {
   let index;
   
   beforeAll(async () => {
+    // Clear module cache to ensure fresh import with mocks
+    jest.resetModules();
     index = await import('../../index.js');
   });
 
