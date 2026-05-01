@@ -17,38 +17,73 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Ensure BCR exists in company core
+      - name: Ensure BCR exists and is up-to-date in company core
         env:
           SOLR_AUTH: ${{ secrets.SOLR_AUTH }}
         run: |
-          # Check if BCR exists
-          EXISTING=$(curl -s --user "${SOLR_AUTH}" \
-            "https://solr.peviitor.ro/solr/company/select?q=id:361757&rows=1" | jq '.response.numFound')
+          # Check if BCR exists and get current data
+          CURRENT=$(curl -s --user "${SOLR_AUTH}" \
+            "https://solr.peviitor.ro/solr/company/select?q=id:361757&rows=1&wt=json")
           
-          echo "BCR count in company core: $EXISTING"
+          NUM_FOUND=$(echo "$CURRENT" | jq '.response.numFound')
+          echo "BCR count in company core: $NUM_FOUND"
           
-          # Add only if not exists
-          if [ "$EXISTING" -eq "0" ]; then
+          # Expected data from demoANAF
+          EXPECTED_COMPANY="BANCA COMERCIALA ROMANA SA"
+          EXPECTED_BRAND="BCR"
+          
+          if [ "$NUM_FOUND" -eq "0" ]; then
             echo "BCR not found - adding to company core..."
-            echo '[{"id":"361757","company":"BANCA COMERCIALA ROMANA SA","brand":"BCR","status":"activ","location":["București"],"website":["https://www.bcr.ro"],"career":["https://erstegroup-careers.com/bcr/go/bcr-careire/4305601/"],"lastScraped":"2026-04-30","scraperFile":"https://raw.githubusercontent.com/lavilapustea24/banca-commerciala-romana-sa-nodejs-scraper/master/.github/workflows/scrape.yml"}]' > company_data.json
+            echo "[{\"id\":\"361757\",\"company\":\"BANCA COMERCIALA ROMANA SA\",\"brand\":\"BCR\",\"status\":\"activ\",\"location\":[\"București\"],\"website\":[\"https://www.bcr.ro\"],\"career\":[\"https://erstegroup-careers.com/bcr/go/bcr-careire/4305601/\"],\"lastScraped\":\"2026-04-30\",\"scraperFile\":\"https://raw.githubusercontent.com/lavilapustea24/banca-commerciala-romana-sa-nodejs-scraper/master/.github/workflows/scrape.yml\"}]" > company_data.json
             
             curl -s --user "${SOLR_AUTH}" \
               "https://solr.peviitor.ro/solr/company/update/json?commit=true" \
               -X POST \
               -H "Content-Type: application/json" \
               --data-binary @company_data.json
+              
+            echo "✅ BCR added to company core"
           else
-            echo "BCR already exists in company core - no action needed"
+            # Check if data matches demoANAF
+            CURRENT_COMPANY=$(echo "$CURRENT" | jq -r '.response.docs[0].company // empty')
+            CURRENT_BRAND=$(echo "$CURRENT" | jq -r '.response.docs[0].brand // empty')
+            
+            echo "Current company: $CURRENT_COMPANY"
+            echo "Current brand: $CURRENT_BRAND"
+            
+            if [ "$CURRENT_COMPANY" != "$EXPECTED_COMPANY" ] || [ "$CURRENT_BRAND" != "$EXPECTED_BRAND" ]; then
+              echo "⚠️ Data mismatch detected! Updating..."
+              
+              # Delete old data
+              curl -s --user "${SOLR_AUTH}" \
+                "https://solr.peviitor.ro/solr/company/update/json?commit=true" \
+                -X POST \
+                -H "Content-Type: application/json" \
+                -d '{"delete":{"query":"id:361757"}}'
+              
+              # Add correct data
+              echo "[{\"id\":\"361757\",\"company\":\"BANCA COMERCIALA ROMANA SA\",\"brand\":\"BCR\",\"status\":\"activ\",\"location\":[\"București\"],\"website\":[\"https://www.bcr.ro\"],\"career\":[\"https://erstegroup-careers.com/bcr/go/bcr-careire/4305601/\"],\"lastScraped\":\"2026-04-30\",\"scraperFile\":\"https://raw.githubusercontent.com/lavilapustea24/banca-commerciala-romana-sa-nodejs-scraper/master/.github/workflows/scrape.yml\"}]" > company_data.json
+              
+              curl -s --user "${SOLR_AUTH}" \
+                "https://solr.peviitor.ro/solr/company/update/json?commit=true" \
+                -X POST \
+                -H "Content-Type: application/json" \
+                --data-binary @company_data.json
+              
+              echo "✅ BCR data updated in company core"
+            else
+              echo "✅ BCR data is correct in company core - no action needed"
+            fi
           fi
           
-          # Verify
+          # Final verification
           FINAL=$(curl -s --user "${SOLR_AUTH}" \
             "https://solr.peviitor.ro/solr/company/select?q=id:361757&rows=1" | jq '.response.numFound')
           
           echo "BCR count after check: $FINAL"
           
           if [ "$FINAL" -ge "1" ]; then
-            echo "✅ SUCCESS: BCR is in company core"
+            echo "✅ SUCCESS: BCR is in company core with correct data"
           else
             echo "❌ FAILED: BCR still not in company core"
             exit 1
