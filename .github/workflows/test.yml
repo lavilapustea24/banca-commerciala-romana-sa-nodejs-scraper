@@ -105,43 +105,16 @@ jobs:
         run: npm install
 
       - name: Run Unit Tests
-        run: |
-          npm run test:unit
-          mv test-report.html test-results-unit.html
+        run: npm run test:unit
         env:
           SOLR_AUTH: ${{ secrets.SOLR_AUTH }}
-          
-      - name: Upload Unit Test Results
-        uses: actions/upload-artifact@v7
-        with:
-          name: unit-test-results
-          path: test-results-unit.html
-          retention-days: 30
-
+           
       - name: Run Integration Tests
-        run: |
-          npm run test:integration
-          mv test-report.html test-results-integration.html
+        run: npm run test:integration
         env:
           SOLR_AUTH: ${{ secrets.SOLR_AUTH }}
-          
-      - name: Upload Integration Test Results
-        uses: actions/upload-artifact@v7
-        with:
-          name: integration-test-results
-          path: test-results-integration.html
-          retention-days: 30
-
+           
       - name: Run E2E Tests
-        run: |
-          npm run test:e2e
-          mv test-report.html test-results-e2e.html
+        run: npm run test:e2e
         env:
           SOLR_AUTH: ${{ secrets.SOLR_AUTH }}
-          
-      - name: Upload E2E Test Results
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-test-results
-          path: test-results-e2e.html
-          retention-days: 30
