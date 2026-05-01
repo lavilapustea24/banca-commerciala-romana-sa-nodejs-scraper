@@ -165,6 +165,76 @@ async function scrapeBCRJobs() {
   }
 }
 
+/**
+ * Verifies if a job page is still valid (not expired/removed)
+ * Uses Puppeteer to check page content
+ * @param {string} url - Job URL to verify
+ * @param {string} title - Job title for logging
+ * @returns {Promise<boolean>} - True if job page is still valid
+ */
+async function verifyJobPage(url, title = 'Unknown') {
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    });
+    
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: TIMEOUT });
+    
+    // Check for 404 or error status
+    if (!response || response.status() >= 400) {
+      console.log(`    ❌ HTTP ${response?.status() || 'ERR'} - ${title}`);
+      return false;
+    }
+    
+    // Check page content for expiration indicators
+    const pageData = await page.evaluate(() => {
+      const bodyText = document.body.innerText.toLowerCase();
+      
+      const expiredIndicators = [
+        'job not found', 'position not found', 'job expired', 
+        'posting expired', 'no longer available', 
+        'nu mai este disponibil', 'locul nu mai este disponibil',
+        '404', 'not found'
+      ];
+      
+      const isExpired = expiredIndicators.some(indicator => bodyText.includes(indicator));
+      
+      // Check if it still looks like a job page
+      const jobIndicators = [
+        'job', 'position', 'role', 'responsibilities', 'requirements',
+        'loc de munca', 'job description', 'apply', 'aplica', 'candidat'
+      ];
+      
+      const hasJobContent = jobIndicators.some(indicator => bodyText.includes(indicator));
+      
+      return { isExpired, hasJobContent, title: document.title };
+    });
+    
+    if (pageData.isExpired) {
+      console.log(`    ❌ Job expired: ${pageData.title}`);
+      return false;
+    }
+    
+    if (!pageData.hasJobContent) {
+      console.log(`    ❌ Not a job page anymore: ${pageData.title}`);
+      return false;
+    }
+    
+    return true;
+    
+  } catch (err) {
+    console.log(`    ⚠️ Error verifying job: ${err.message}`);
+    return false;
+  } finally {
+    if (browser) await browser.close();
+  }
+}
+
 // ============================================================================
 // DATA TRANSFORMATION - Map to Job Model schema
 // ============================================================================
@@ -316,6 +386,25 @@ async function main() {
         }
       } else {
         console.log("No old jobs to delete.");
+      }
+    }
+
+    // Step 9: Verify all current jobs are still valid (not expired)
+    console.log("\n=== Step 9: Verify current jobs with Puppeteer ===\n");
+    console.log(`Checking ${scrapedJobs.length} scraped jobs for expiration...`);
+    
+    for (const job of scrapedJobs) {
+      try {
+        const isValid = await verifyJobPage(job.url);
+        if (!isValid) {
+          console.log(`  ❌ Job expired or invalid: ${job.title} - ${job.url}`);
+          await deleteJobByUrl(job.url);
+        } else {
+          console.log(`  ✅ Job still valid: ${job.title}`);
+        }
+        await sleep(1000); // Rate limiting
+      } catch (err) {
+        console.log(`  ⚠️ Error verifying job: ${job.title} - ${err.message}`);
       }
     }
 
