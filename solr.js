@@ -215,7 +215,7 @@ export async function upsertJobs(jobs) {
 }
 
 // ============================================================================
-// URL VALIDATION - Verify job URLs are still active
+// URL VALIDATION - Verify job URLs are still active (with Puppeteer)
 // ============================================================================
 
 /**
@@ -258,7 +258,7 @@ async function checkUrl(url) {
       // Check if it looks like a job page (has job-related content)
       const jobIndicators = [
         'job', 'position', 'role', 'responsibilities', 'requirements',
-        'loc de muncă', 'job description', 'apply', 'aplică', 'candidat'
+        'loc de munca', 'job description', 'apply', 'aplica', 'candidat'
       ];
       
       const hasJobContent = jobIndicators.some(indicator => body.includes(indicator));
@@ -284,7 +284,7 @@ async function checkUrl(url) {
 }
 
 // ============================================================================
-// VERIFICATION WORKFLOW - Check and clean up invalid URLs
+// VERIFICATION WORKFLOW - Check and clean up invalid URLs (with Puppeteer)
 // ============================================================================
 
 /**
@@ -303,8 +303,7 @@ async function runVerification(cif) {
     return;
   }
 
-  console.log("\nVerifying each job URL with Puppeteer...");
-  
+  console.log("\nVerifying each job URL with Puppeteer...");  
   const invalidUrls = [];
   const validJobs = [];
 
@@ -425,7 +424,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
     // Company query mode
     await runCompanyQuery(args);
   } else {
-    // Verification mode
+    // Verification mode (with Puppeteer)
     const cif = args[0] || null;
     if (!cif) {
       console.error("Error: CIF required. Usage: node solr.js <CIF>");

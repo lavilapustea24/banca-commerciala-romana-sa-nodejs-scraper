@@ -79,22 +79,57 @@ async function scrapeBCRJobs() {
     
     console.log(`Found ${jobLinks.length} unique job links`);
     
-    // Visit each job page to get details
+    // Visit each job page to get details and verify it's a real job page
     const jobs = [];
     for (const url of jobLinks) {
       try {
         console.log(`  Checking: ${url}`);
+        
+        // Navigate to job page
+        const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: TIMEOUT });
+        
+        // Check for 404 or error status
+        if (!response || response.status() >= 400) {
+          console.log(`    ❌ HTTP ${response?.status() || 'ERR'} - skipping`);
+          continue;
+        }
+        
+        // Extract job details and verify it's a job page
         const jobData = await page.evaluate((jobUrl) => {
-          // Navigate to job page (in real implementation, you'd open new tab)
-          // For now, check if current page has job details
           const title = document.querySelector('h1, .job-title, [class*="title"]')?.innerText?.trim();
           const location = document.querySelector('[class*="location"], .job-location')?.innerText?.trim();
-          const description = document.querySelector('[class*="description"], .job-description')?.innerText?.trim();
+          const description = document.querySelector('[class*="description"], .job-description, [class*="content"]')?.innerText?.trim();
+          const bodyText = document.body.innerText.toLowerCase();
           
           // Check if this is actually a job page
-          const isJobPage = title && (description || document.body.innerText.includes('responsibilities') || document.body.innerText.includes('requirements'));
+          const hasJobIndicators = 
+            (title && title.length > 5) &&
+            (bodyText.includes('responsibilities') || 
+             bodyText.includes('requirements') || 
+             bodyText.includes('job description') ||
+             bodyText.includes('loc de munca') ||
+             bodyText.includes('apply') || 
+             bodyText.includes('aplica'));
           
-          return { title, location, description, isJobPage, url: jobUrl };
+          // Check for expired/removed indicators
+          const expiredIndicators = [
+            'job not found', 'position not found', 'job expired', 
+            'posting expired', 'no longer available', 
+            'nu mai este disponibil', 'locul nu mai este disponibil',
+            '404', 'not found'
+          ];
+          
+          const isExpired = expiredIndicators.some(indicator => bodyText.includes(indicator));
+          
+          return { 
+            title, 
+            location, 
+            description: description?.substring(0, 500), 
+            isJobPage: hasJobIndicators && !isExpired,
+            isExpired,
+            url: jobUrl,
+            pageTitle: document.title
+          };
         }, url);
         
         if (jobData.isJobPage && jobData.title) {
@@ -108,11 +143,11 @@ async function scrapeBCRJobs() {
           });
           console.log(`    ✅ Valid job: ${jobData.title}`);
         } else {
-          console.log(`    ❌ Not a valid job page`);
+          console.log(`    ❌ Not a valid job page${jobData.isExpired ? ' (expired)' : ''}`);
         }
         
         // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await sleep(1000);
         
       } catch (err) {
         console.log(`    ⚠️ Error checking job: ${err.message}`);
@@ -128,11 +163,9 @@ async function scrapeBCRJobs() {
   } finally {
     if (browser) await browser.close();
   }
-  }
-  
-  // parseBCRJobsFromHTML removed - now using Puppeteer directly in scrapeBCRJobs()
-  
-  // ============================================================================
+}
+
+// ============================================================================
 // DATA TRANSFORMATION - Map to Job Model schema
 // ============================================================================
 
@@ -233,85 +266,69 @@ async function main() {
   const testOnlyOnePage = process.argv.includes("--test");
   
   try {
-    // Step 2: Validate company via ANAF (this also gets the CIF)
-    console.log("\n=== Step 2: Validate company via ANAF ===");
-    const { company, cif } = await validateAndGetCompany();
-    COMPANY_NAME = company;
-    const localCif = cif;
-    
-    // Step 1: Get existing jobs count from Solr (moved here to use the dynamic CIF)
-    console.log("=== Step 1: Get existing jobs count ===");
-    const existingResult = await querySOLR(localCif);
-    const existingCount = existingResult.numFound;
-    console.log(`Found ${existingCount} existing jobs in SOLR`);
-    
-    // Step 3: Scrape jobs from BCR careers page
-    const rawJobs = await scrapeBCRJobs();
-    const scrapedCount = rawJobs.length;
-    console.log(`📊 Jobs scraped from BCR website: ${scrapedCount}`);
+    // Step 1: Validate company via ANAF
+    console.log("=== Step 1: Validate company via ANAF ===\n");
+    const companyData = await validateAndGetCompany();
+    COMPANY_NAME = companyData.company;
+    const cif = companyData.cif;
 
-    if (scrapedCount === 0) {
-      console.log("No jobs found. Exiting.");
+    // Step 2: Check existing jobs in SOLR
+    console.log("\n=== Step 2: Check existing jobs in SOLR ===\n");
+    const existingJobs = await querySOLR(cif);
+    console.log(`Jobs found in SOLR for CIF ${cif}: ${existingJobs.numFound}`);
+
+    // Step 3: Scrape BCR job listings (with Puppeteer)
+    const scrapedJobs = await scrapeBCRJobs();
+
+    if (scrapedJobs.length === 0) {
+      console.log("\n⚠️ No jobs scraped. Keeping existing jobs in SOLR.");
       return;
     }
 
-    // Step 4: Map to Job Model
-    const jobs = rawJobs.map(job => mapToJobModel(job, localCif));
+    console.log(`\n=== Step 4: Scraped ${scrapedJobs.length} jobs ===\n`);
 
-    // Create payload
-    const payload = {
-      source: "bcr.ro",
-      scrapedAt: new Date().toISOString(),
+    // Step 5: Map to Job Model schema
+    const jobsForSolr = scrapedJobs.map(job => mapToJobModel(job, cif));
+
+    // Step 6: Transform for SOLR
+    const payload = transformJobsForSOLR({
       company: COMPANY_NAME,
-      cif: localCif,
-      jobs
-    };
+      cif: cif,
+      jobs: jobsForSolr
+    });
 
-    // Step 5: Transform for Solr
-    console.log("\nTransforming jobs for SOLR...");
-    const transformedPayload = transformJobsForSOLR(payload);
-    
-    // Save to file for debugging
-    fs.writeFileSync("jobs.json", JSON.stringify(transformedPayload, null, 2), "utf-8");
-    console.log("Saved jobs.json");
+    // Step 7: Upsert to SOLR
+    console.log(`\n=== Step 7: Upsert ${payload.jobs.length} jobs to SOLR ===\n`);
+    await upsertJobs(payload.jobs);
 
-    // Step 6: Delete old jobs (those not in current scrape)
-    console.log("\n=== Step 6: Delete old jobs ===");
-    const currentUrls = new Set(transformedPayload.jobs.map(j => j.url));
-    const oldJobsResult = await querySOLR(localCif);
+    // Step 8: Delete old jobs not found in current scrape
+    console.log("\n=== Step 8: Clean up old jobs ===\n");
+    const currentUrls = new Set(scrapedJobs.map(j => j.url));
     
-    for (const oldJob of oldJobsResult.docs) {
-      if (!currentUrls.has(oldJob.url)) {
-        console.log(`Deleting old job: ${oldJob.title}`);
-        await deleteJobByUrl(oldJob.url);
+    if (existingJobs.docs) {
+      const oldJobs = existingJobs.docs.filter(job => !currentUrls.has(job.url));
+      
+      if (oldJobs.length > 0) {
+        console.log(`Found ${oldJobs.length} old jobs to delete:`);
+        for (const job of oldJobs) {
+          console.log(`  Deleting: ${job.title} - ${job.url}`);
+          await deleteJobByUrl(job.url);
+        }
+      } else {
+        console.log("No old jobs to delete.");
       }
     }
-    
-    // Step 7: Upsert to Solr
-    console.log("\n=== Step 7: Upsert jobs to SOLR ===");
-    await upsertJobs(transformedPayload.jobs);
 
-    // Step 7: Final count
-    const finalResult = await querySOLR(localCif);
-    console.log(`\n📊 === SUMMARY ===`);
-    console.log(`📊 Jobs existing in SOLR before scrape: ${existingCount}`);
-    console.log(`📊 Jobs scraped from BCR website: ${scrapedCount}`);
-    console.log(`📊 Jobs in SOLR after scrape: ${finalResult.numFound}`);
-    console.log(`====================`);
-
-    console.log("\n=== DONE ===");
-    console.log("BCR scraper completed successfully!");
+    console.log("\n✅ Scraping completed successfully!");
 
   } catch (err) {
-    console.error("Scraper failed:", err);
+    console.error("\n❌ Error in main workflow:", err.message);
     process.exit(1);
   }
 }
 
-// Export functions for testing
-export { scrapeBCRJobs, mapToJobModel, transformJobsForSOLR };
+// ============================================================================
+// ENTRY POINT
+// ============================================================================
 
-// Run main when executed directly
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
-}
+main();
