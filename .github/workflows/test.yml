@@ -103,18 +103,24 @@ jobs:
           
       - name: Install dependencies
         run: npm install
-
+        
+      - name: Install Puppeteer Chromium
+        run: npx @puppeteer/browsers install chromium@latest --path .local-chromium
+        
       - name: Run Unit Tests
         run: npm run test:unit
         env:
           SOLR_AUTH: ${{ secrets.SOLR_AUTH }}
+          PUPPETEER_EXECUTABLE_PATH: .local-chromium/chrome-linux64/chrome
            
       - name: Run Integration Tests
         run: npm run test:integration
         env:
           SOLR_AUTH: ${{ secrets.SOLR_AUTH }}
-           
+          PUPPETEER_EXECUTABLE_PATH: .local-chromium/chrome-linux64/chrome
+            
       - name: Run E2E Tests
         run: npm run test:e2e
         env:
           SOLR_AUTH: ${{ secrets.SOLR_AUTH }}
+          PUPPETEER_EXECUTABLE_PATH: .local-chromium/chrome-linux64/chrome

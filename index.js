@@ -328,7 +328,16 @@ async function main() {
 }
 
 // ============================================================================
+// EXPORTS
+// ============================================================================
+
+export { scrapeBCRJobs, mapToJobModel };
+
+// ============================================================================
 // ENTRY POINT
 // ============================================================================
 
-main();
+// Only run main() if this file is executed directly (not imported)
+if (process.argv[1]?.endsWith("index.js") || import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
