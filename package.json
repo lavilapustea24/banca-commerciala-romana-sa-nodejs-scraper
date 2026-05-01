@@ -6,10 +6,10 @@
   "main": "index.js",
   "scripts": {
     "scrape": "node index.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest --testPathPattern=tests/unit",
-    "test:unit": "node --experimental-vm-modules node_modules/.bin/jest tests/unit",
-    "test:integration": "node --experimental-vm-modules node_modules/.bin/jest tests/integration",
-    "test:e2e": "node --experimental-vm-modules node_modules/.bin/jest tests/e2e"
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --testPathPattern=tests/unit",
+    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest tests/unit",
+    "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest tests/integration",
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest tests/e2e"
   },
   "keywords": ["scraper", "jobs", "bcr", "peviitor", "nodejs"],
   "author": "lavilapustea24",
