@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 
-// Mock puppeteer module before import
+// Mock puppeteer module properly
 jest.mock('puppeteer', () => {
   return {
     launch: jest.fn().mockResolvedValue({
@@ -14,9 +14,8 @@ jest.mock('puppeteer', () => {
             title: 'Test Job Title',
             location: 'București',
             description: 'Test job description with responsibilities and requirements',
-            hasJobIndicators: true,
-            isExpired: false,
             isJobPage: true,
+            isExpired: false,
             url: 'https://erstegroup-careers.com/bcr/job/test/123/',
             pageTitle: 'Test Job'
           };
@@ -31,7 +30,6 @@ describe('index.js', () => {
   let index;
   
   beforeAll(async () => {
-    // Clear module cache to ensure fresh import with mocks
     jest.resetModules();
     index = await import('../../index.js');
   });
@@ -79,7 +77,6 @@ describe('index.js', () => {
       
       const result = index.mapToJobModel(rawJob, '361757');
       
-      // Tags should be lowercase and without diacritics
       if (result.tags) {
         result.tags.forEach(tag => {
           expect(tag).toBe(tag.toLowerCase());
@@ -126,7 +123,6 @@ describe('index.js', () => {
       
       const result = index.transformJobsForSOLR(payload);
       
-      // Should only keep valid Romanian cities
       expect(result.jobs[0].location).not.toContain('InvalidCity');
       expect(result.jobs[0].location).toContain('București');
     });
