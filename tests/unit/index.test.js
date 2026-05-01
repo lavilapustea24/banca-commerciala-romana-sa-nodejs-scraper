@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 
-// Mock puppeteer module
+// Mock modules before import
 jest.mock('puppeteer', () => {
   return {
     launch: jest.fn().mockResolvedValue({
@@ -9,8 +9,7 @@ jest.mock('puppeteer', () => {
         goto: jest.fn().mockResolvedValue({
           status: jest.fn().mockReturnValue(200)
         }),
-        evaluate: jest.fn().mockImplementation((fn) => {
-          // Mock job page validation
+        evaluate: jest.fn().mockImplementation(() => {
           return {
             title: 'Test Job Title',
             location: 'București',
@@ -32,7 +31,7 @@ describe('index.js', () => {
   let index;
   
   beforeAll(async () => {
-    // Clear module cache to ensure fresh import with mocks
+    // Clear module cache
     jest.resetModules();
     index = await import('../../index.js');
   });
