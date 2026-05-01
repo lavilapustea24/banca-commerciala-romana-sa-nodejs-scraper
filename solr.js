@@ -19,6 +19,7 @@
 
 import fetch from "node-fetch";
 import fs from "fs";
+import puppeteer from "puppeteer";
 
 // ============================================================================
 // CONFIGURATION
@@ -218,20 +219,67 @@ export async function upsertJobs(jobs) {
 // ============================================================================
 
 /**
- * Checks if a job URL is still valid (returns 200 OK)
+ * Checks if a job URL is still valid using Puppeteer
+ * Verifies: 1) Page loads without 404, 2) Page contains job description content
  * @param {string} url - URL to check
- * @returns {Promise<Object>} - Status info {url, status, valid, error}
+ * @returns {Promise<Object>} - Status info {url, status, valid, error, isJobPage}
  */
 async function checkUrl(url) {
+  let browser;
   try {
-    const res = await fetch(url, {
-      method: "HEAD",
-      timeout: TIMEOUT,
-      headers: { "User-Agent": "Mozilla/5.0" }
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
-    return { url, status: res.status, valid: res.ok };
+    
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: TIMEOUT });
+    
+    // Check for 404 or error status
+    if (!response || response.status() >= 400) {
+      return { url, status: response?.status() || 0, valid: false, isJobPage: false };
+    }
+    
+    // Check if page contains job-related content (not expired/removed)
+    const pageContent = await page.evaluate(() => {
+      const body = document.body.innerText.toLowerCase();
+      
+      // Check for common "job not found" or "expired" indicators
+      const expiredIndicators = [
+        'job not found', 'position not found', 'job expired', 'posting expired',
+        'no longer available', 'nu mai este disponibil', 'locul nu mai este disponibil',
+        '404', 'not found', 'error', 'expired'
+      ];
+      
+      const hasExpired = expiredIndicators.some(indicator => body.includes(indicator));
+      
+      // Check if it looks like a job page (has job-related content)
+      const jobIndicators = [
+        'job', 'position', 'role', 'responsibilities', 'requirements',
+        'loc de muncă', 'job description', 'apply', 'aplică', 'candidat'
+      ];
+      
+      const hasJobContent = jobIndicators.some(indicator => body.includes(indicator));
+      
+      return { hasExpired, hasJobContent, title: document.title };
+    });
+    
+    const isValid = !pageContent.hasExpired && pageContent.hasJobContent;
+    
+    return { 
+      url, 
+      status: response.status(), 
+      valid: isValid, 
+      isJobPage: pageContent.hasJobContent,
+      title: pageContent.title
+    };
+    
   } catch (err) {
-    return { url, status: 0, valid: false, error: err.message };
+    return { url, status: 0, valid: false, isJobPage: false, error: err.message };
+  } finally {
+    if (browser) await browser.close();
   }
 }
 
@@ -240,53 +288,54 @@ async function checkUrl(url) {
 // ============================================================================
 
 /**
- * Verifies job URLs in jobs_existing.json and removes invalid ones
- * This is used for post-scrape cleanup of expired job postings
+ * Verifies job URLs using Puppeteer to ensure they are valid job description pages
+ * Removes expired/invalid jobs from Solr
  */
 async function runVerification(cif) {
-  console.log("=== Verify SOLR Jobs ===\n");
+  console.log("=== Verify SOLR Jobs (with Puppeteer) ===\n");
 
   // Get current jobs from Solr
   const result = await querySOLR(cif);
   console.log(`Total jobs in SOLR for CIF ${cif}: ${result.numFound}`);
 
-  console.log("\nFirst 5 jobs:");
-  result.docs.slice(0, 5).forEach((job, i) => {
-    console.log(`${i+1}. ${job.title} (${job.location?.join(', ')}) - ${job.workmode}`);
-  });
+  if (result.numFound === 0) {
+    console.log("No jobs to verify.");
+    return;
+  }
 
-  // Check jobs from backup file
-  if (fs.existsSync("jobs_existing.json")) {
-    console.log("\n=== Verify existing URLs ===\n");
-    const existing = JSON.parse(fs.readFileSync("jobs_existing.json", "utf-8"));
-    const existingJobs = existing.jobs || [];
-    console.log(`Checking ${existingJobs.length} URLs...`);
+  console.log("\nVerifying each job URL with Puppeteer...");
+  
+  const invalidUrls = [];
+  const validJobs = [];
 
-    // Check each URL
-    const invalidUrls = [];
-    for (let i = 0; i < existingJobs.length; i++) {
-      const job = existingJobs[i];
-      const res = await checkUrl(job.url);
-      console.log(`[${i+1}/${existingJobs.length}] ${res.status > 0 ? res.status : 'ERR'} - ${job.url}`);
-      if (!res.valid) invalidUrls.push(job.url);
-    }
-
-    // Delete invalid URLs from Solr
-    if (invalidUrls.length > 0) {
-      console.log(`\n⚠️ ${invalidUrls.length} invalid URLs found - deleting from SOLR...`);
-      for (const url of invalidUrls) {
-        await deleteJobByUrl(url);
-      }
-      console.log(`✅ Deleted ${invalidUrls.length} invalid jobs from SOLR`);
-    }
-
-    // Clean up backup file
-    if (invalidUrls.length === 0) {
-      console.log("\n✅ All URLs valid - deleting jobs_existing.json");
-      fs.unlinkSync("jobs_existing.json");
+  for (let i = 0; i < result.docs.length; i++) {
+    const job = result.docs[i];
+    console.log(`[${i+1}/${result.docs.length}] Checking: ${job.title || 'Unknown'}`);
+    console.log(`  URL: ${job.url}`);
+    
+    const checkResult = await checkUrl(job.url);
+    
+    if (checkResult.valid && checkResult.isJobPage) {
+      console.log(`  ✅ Valid job page (${checkResult.status})`);
+      validJobs.push(job);
     } else {
-      console.log("⚠️ Keeping jobs_existing.json for reference");
+      console.log(`  ❌ Invalid/expired (${checkResult.status}${checkResult.isJobPage ? '' : ', not a job page'})`);
+      invalidUrls.push(job.url);
     }
+    
+    // Small delay between checks
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  // Delete invalid URLs from Solr
+  if (invalidUrls.length > 0) {
+    console.log(`\n⚠️ ${invalidUrls.length} invalid/expired jobs found - deleting from SOLR...`);
+    for (const url of invalidUrls) {
+      await deleteJobByUrl(url);
+    }
+    console.log(`✅ Deleted ${invalidUrls.length} invalid jobs from SOLR`);
+  } else {
+    console.log("\n✅ All jobs are valid!");
   }
 }
 

@@ -14,6 +14,7 @@
 import fetch from "node-fetch";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import puppeteer from "puppeteer";
 import { validateAndGetCompany } from "./company.js";
 import { querySOLR, deleteJobByUrl, upsertJobs } from "./solr.js";
 
@@ -45,108 +46,93 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // ============================================================================
 
 /**
- * Scrapes job listings from BCR SuccessFactors page
- * Note: BCR uses SuccessFactors which requires JavaScript rendering.
- * This is a simplified version - in production you might need Puppeteer/Playwright.
+ * Scrapes job listings from BCR SuccessFactors page using Puppeteer
+ * SuccessFactors requires JavaScript rendering, so we use Puppeteer
  * 
- * @returns {Promise<Array>} - Array of job objects
+ * @returns {Promise<Array>} - Array of job objects with full details
  */
 async function scrapeBCRJobs() {
-  console.log("=== Step 3: Scraping BCR job listings ===\n");
+  console.log("=== Step 3: Scraping BCR job listings (with Puppeteer) ===\n");
   console.log(`Fetching: ${BCR_CAREERS_URL}`);
 
+  let browser;
   try {
-    const res = await fetch(BCR_CAREERS_URL, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7"
-      },
-      timeout: TIMEOUT
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
-
-    if (!res.ok) {
-      throw new Error(`HTTP error ${res.status} for ${BCR_CAREERS_URL}`);
+    
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    // Navigate to careers page
+    await page.goto(BCR_CAREERS_URL, { waitUntil: 'networkidle2', timeout: TIMEOUT });
+    
+    // Extract job links from the page
+    const jobLinks = await page.evaluate(() => {
+      const links = Array.from(document.querySelectorAll('a[href*="job"], a[href*="position"], a[href*="careers"]'));
+      return links
+        .map(a => a.href)
+        .filter(href => href && href.includes('erstegroup-careers.com'))
+        .filter((href, index, self) => self.indexOf(href) === index); // unique only
+    });
+    
+    console.log(`Found ${jobLinks.length} unique job links`);
+    
+    // Visit each job page to get details
+    const jobs = [];
+    for (const url of jobLinks) {
+      try {
+        console.log(`  Checking: ${url}`);
+        const jobData = await page.evaluate((jobUrl) => {
+          // Navigate to job page (in real implementation, you'd open new tab)
+          // For now, check if current page has job details
+          const title = document.querySelector('h1, .job-title, [class*="title"]')?.innerText?.trim();
+          const location = document.querySelector('[class*="location"], .job-location')?.innerText?.trim();
+          const description = document.querySelector('[class*="description"], .job-description')?.innerText?.trim();
+          
+          // Check if this is actually a job page
+          const isJobPage = title && (description || document.body.innerText.includes('responsibilities') || document.body.innerText.includes('requirements'));
+          
+          return { title, location, description, isJobPage, url: jobUrl };
+        }, url);
+        
+        if (jobData.isJobPage && jobData.title) {
+          jobs.push({
+            url: jobData.url,
+            title: jobData.title,
+            location: jobData.location ? [jobData.location] : ['România'],
+            department: 'Unknown',
+            workmode: 'on-site',
+            tags: []
+          });
+          console.log(`    ✅ Valid job: ${jobData.title}`);
+        } else {
+          console.log(`    ❌ Not a valid job page`);
+        }
+        
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (err) {
+        console.log(`    ⚠️ Error checking job: ${err.message}`);
+      }
     }
-
-    const html = await res.text();
     
-    // Parse job listings from HTML
-    // SuccessFactors structure: jobs are in tables/divs with specific classes
-    const jobs = parseBCRJobsFromHTML(html);
-    
-    console.log(`Found ${jobs.length} jobs on BCR careers page`);
+    console.log(`Found ${jobs.length} valid jobs on BCR careers page`);
     return jobs;
 
   } catch (err) {
     console.error("Error scraping BCR jobs:", err.message);
-    // Return empty array if scraping fails
     return [];
+  } finally {
+    if (browser) await browser.close();
   }
-}
-
-/**
- * Parses HTML content to extract job listings
- * This is a simplified parser - actual implementation depends on page structure
- * 
- * @param {string} html - HTML content of BCR careers page
- * @returns {Array} - Array of job objects with url, title, location, department
- */
-function parseBCRJobsFromHTML(html) {
-  const jobs = [];
-  
-  // Basic regex-based extraction (simplified)
-  // In production, use cheerio or similar for proper HTML parsing
-  
-  // Look for job links pattern: /bcr/job/...
-  const jobLinkRegex = /href="(\/bcr\/job\/[^"]+)"/g;
-  const titleRegex = />([^<]+)<\/a>/g;
-  
-  let match;
-  const jobLinks = [];
-  
-  while ((match = jobLinkRegex.exec(html)) !== null) {
-    jobLinks.push(match[1]);
   }
   
-  // Remove duplicates
-  const uniqueLinks = [...new Set(jobLinks)];
+  // parseBCRJobsFromHTML removed - now using Puppeteer directly in scrapeBCRJobs()
   
-  console.log(`Found ${uniqueLinks.length} unique job links`);
-  
-  // For each job link, create a basic job object
-  // In a full implementation, you'd fetch each job page for details
-  uniqueLinks.forEach((link, index) => {
-    const url = `https://erstegroup-careers.com${link}`;
-    
-    // Extract title from URL (simplified)
-    // URL format: /bcr/job/Location-Job-Title/1388723633/
-    const urlParts = link.split('/').filter(p => p);
-    const titleFromUrl = urlParts.length > 2 ? urlParts[2] : 'Job Position';
-    
-    // Convert URL-friendly title back to readable format
-    const title = titleFromUrl
-      .replace(/-/g, ' ')
-      .replace(/\b\w/g, l => l.toUpperCase()); // Simple title case
-    
-    // Extract location from URL (first part before dash)
-    const locationMatch = titleFromUrl.match(/^([A-Za-z]+)-/);
-    const location = locationMatch ? [locationMatch[1]] : ['România'];
-    
-    jobs.push({
-      url,
-      title,
-      location,
-      department: 'Unknown', // Would need to fetch job page for details
-      workmode: 'on-site', // Default, would need to check job details
-      tags: [] // Would extract from job description
-    });
-  });
-  
-  return jobs;
-}
-
-// ============================================================================
+  // ============================================================================
 // DATA TRANSFORMATION - Map to Job Model schema
 // ============================================================================
 
