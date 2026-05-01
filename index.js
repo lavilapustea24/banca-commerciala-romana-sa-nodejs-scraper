@@ -289,8 +289,20 @@ async function main() {
     fs.writeFileSync("jobs.json", JSON.stringify(transformedPayload, null, 2), "utf-8");
     console.log("Saved jobs.json");
 
-    // Step 6: Upsert to Solr
-    console.log("\n=== Step 6: Upsert jobs to SOLR ===");
+    // Step 6: Delete old jobs (those not in current scrape)
+    console.log("\n=== Step 6: Delete old jobs ===");
+    const currentUrls = new Set(transformedPayload.jobs.map(j => j.url));
+    const oldJobsResult = await querySOLR(localCif);
+    
+    for (const oldJob of oldJobsResult.docs) {
+      if (!currentUrls.has(oldJob.url)) {
+        console.log(`Deleting old job: ${oldJob.title}`);
+        await deleteJobByUrl(oldJob.url);
+      }
+    }
+    
+    // Step 7: Upsert to Solr
+    console.log("\n=== Step 7: Upsert jobs to SOLR ===");
     await upsertJobs(transformedPayload.jobs);
 
     // Step 7: Final count
