@@ -307,35 +307,29 @@
   </footer>
 
   <script>
+    const COMPANY = 'BANCA COMERCIALA ROMANA SA';
+
     async function loadStats() {
       try {
-        const jobsRes = await fetch('./jobs.json', { cache: 'no-cache' });
-        const jobsData = await jobsRes.json();
-        const jobs = jobsData.jobs || [];
-        
-        document.getElementById('jobsCount').textContent = jobs.length;
-        document.getElementById('verifiedCount').textContent = jobs.length;
-        
-        const now = new Date();
-        const time = now.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
-        const date = now.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        document.getElementById('lastRunTime').textContent = time;
-        document.getElementById('lastRunDate').textContent = date;
-        
-        const jobsList = document.getElementById('jobsListContent');
-        jobsList.innerHTML = '';
-        jobs.forEach(job => {
-          const li = document.createElement('li');
-          li.innerHTML = `<a href="${job.url}" target="_blank">${job.title}</a>`;
-          jobsList.appendChild(li);
+        const res = await fetch(`https://api.peviitor.ro/v1/search/?company=${encodeURIComponent(COMPANY)}&page=1`, {
+          headers: { origin: 'https://peviitor.ro', referer: 'https://peviitor.ro/' }
         });
-      } catch(e) {
-        document.getElementById('jobsCount').textContent = '0';
-        document.getElementById('verifiedCount').textContent = '0';
+        const data = await res.json();
+        document.getElementById('jobsCount').textContent = data.response.numFound;
+
         const now = new Date();
         document.getElementById('lastRunTime').textContent = now.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
         document.getElementById('lastRunDate').textContent = now.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        document.getElementById('jobsListContent').innerHTML = '<li>Nu s-au putut încărca joburile. Rulează scraperul manual din GitHub Actions.</li>';
+
+        const jobsList = document.getElementById('jobsListContent');
+        jobsList.innerHTML = '';
+        data.response.docs.forEach(job => {
+          const li = document.createElement('li');
+          li.innerHTML = `<a href="${job.url}" target="_blank">${job.job_title}</a>`;
+          jobsList.appendChild(li);
+        });
+      } catch(e) {
+        document.getElementById('jobsCount').textContent = '-';
       }
     }
     loadStats();
