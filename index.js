@@ -123,7 +123,8 @@ function mapToJobModel(rawJob, cif, companyName = COMPANY_NAME) {
     workmode: rawJob.workmode || undefined,
     salary: rawJob.salary || undefined,
     date: now,
-    status: "scraped"
+    vdate: now,
+    status: "verified"
   };
 
   // Remove undefined fields
