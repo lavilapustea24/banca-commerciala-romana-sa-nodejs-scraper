@@ -1,38 +1,38 @@
 import { jest } from '@jest/globals';
 
-// Mock puppeteer module properly
-jest.mock('puppeteer', () => {
-  return {
-    launch: jest.fn().mockResolvedValue({
-      newPage: jest.fn().mockResolvedValue({
-        setUserAgent: jest.fn(),
-        goto: jest.fn().mockResolvedValue({
-          status: jest.fn().mockReturnValue(200)
-        }),
-        evaluate: jest.fn().mockImplementation(() => {
-          return {
-            title: 'Test Job Title',
-            location: 'București',
-            description: 'Test job description with responsibilities and requirements',
-            isJobPage: true,
-            isExpired: false,
+const mockPuppeteer = {
+  default: {
+    launch: () => Promise.resolve({
+      newPage: () => Promise.resolve({
+        setUserAgent: () => Promise.resolve(),
+        goto: () => Promise.resolve({ status: () => 200 }),
+        waitForSelector: () => Promise.resolve(),
+        evaluate: () => Promise.resolve([
+          {
             url: 'https://erstegroup-careers.com/bcr/job/test/123/',
-            pageTitle: 'Test Job'
-          };
-        }),
-        close: jest.fn().mockResolvedValue(undefined)
+            title: 'Test Job Title',
+            location: ['București'],
+            department: 'Test Dept',
+            workmode: 'on-site',
+            tags: []
+          }
+        ]),
+        close: () => Promise.resolve()
       }),
-      close: jest.fn().mockResolvedValue(undefined)
-    });
+      close: () => Promise.resolve()
+    })
+  }
+};
+
+jest.unstable_mockModule('puppeteer', () => mockPuppeteer);
+
+let index;
+
+beforeAll(async () => {
+  index = await import('../../index.js');
 });
 
 describe('index.js', () => {
-  let index;
-  
-  beforeAll(async () => {
-    jest.resetModules();
-    index = await import('../../index.js');
-  });
 
   describe('scrapeBCRJobs', () => {
     it('should return an array of job objects', async () => {

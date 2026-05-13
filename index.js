@@ -11,12 +11,9 @@
  * - Upserting jobs to Solr
  */
 
-import fetch from "node-fetch";
-import fs from "fs";
-import { fileURLToPath } from "url";
 import puppeteer from "puppeteer";
 import { validateAndGetCompany } from "./company.js";
-import { querySOLR, deleteJobByUrl, upsertJobs } from "./solr.js";
+import { querySOLR, upsertJobs } from "./solr.js";
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -34,12 +31,6 @@ let COMPANY_NAME = null;
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/**
- * Promise-based sleep function
- * @param {number} ms - Milliseconds to sleep
- */
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ============================================================================
 // SCRAPING LOGIC - Extract job listings from BCR careers page
@@ -65,94 +56,35 @@ async function scrapeBCRJobs() {
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
     
-    // Navigate to careers page
+    // Navigate to careers page and wait for job table to render
     await page.goto(BCR_CAREERS_URL, { waitUntil: 'networkidle2', timeout: TIMEOUT });
+    await page.waitForSelector('table#searchresults tbody tr.data-row', { timeout: TIMEOUT });
     
-    // Extract job links from the page
-    const jobLinks = await page.evaluate(() => {
-      const links = Array.from(document.querySelectorAll('a[href*="job"], a[href*="position"], a[href*="careers"]'));
-      return links
-        .map(a => a.href)
-        .filter(href => href && href.includes('erstegroup-careers.com'))
-        .filter((href, index, self) => self.indexOf(href) === index); // unique only
+    // Extract job details directly from the listing table
+    const jobs = await page.evaluate(() => {
+      const baseUrl = 'https://erstegroup-careers.com';
+      const rows = Array.from(document.querySelectorAll('table#searchresults tbody tr.data-row'));
+      
+      return rows.map(row => {
+        const linkEl = row.querySelector('a.jobTitle-link');
+        const locationEl = row.querySelector('td.colShifttype span.jobShifttype');
+        const departmentEl = row.querySelector('td.colFacility span.jobFacility');
+        
+        const href = linkEl?.getAttribute('href') || '';
+        const fullUrl = href.startsWith('http') ? href : baseUrl + href;
+        
+        const locText = locationEl?.innerText?.trim() || 'România';
+        
+        return {
+          url: fullUrl,
+          title: linkEl?.innerText?.trim() || '',
+          location: [locText],
+          department: departmentEl?.innerText?.trim() || 'Unknown',
+          workmode: 'on-site',
+          tags: []
+        };
+      });
     });
-    
-    console.log(`Found ${jobLinks.length} unique job links`);
-    
-    // Visit each job page to get details and verify it's a real job page
-    const jobs = [];
-    for (const url of jobLinks) {
-      try {
-        console.log(`  Checking: ${url}`);
-        
-        // Navigate to job page
-        const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: TIMEOUT });
-        
-        // Check for 404 or error status
-        if (!response || response.status() >= 400) {
-          console.log(`    ❌ HTTP ${response?.status() || 'ERR'} - skipping`);
-          continue;
-        }
-        
-        // Extract job details and verify it's a job page
-        const jobData = await page.evaluate((jobUrl) => {
-          const title = document.querySelector('h1, .job-title, [class*="title"]')?.innerText?.trim();
-          const location = document.querySelector('[class*="location"], .job-location')?.innerText?.trim();
-          const description = document.querySelector('[class*="description"], .job-description, [class*="content"]')?.innerText?.trim();
-          const bodyText = document.body.innerText.toLowerCase();
-          
-          // Check if this is actually a job page
-          const hasJobIndicators = 
-            (title && title.length > 5) &&
-            (bodyText.includes('responsibilities') || 
-             bodyText.includes('requirements') || 
-             bodyText.includes('job description') ||
-             bodyText.includes('loc de munca') ||
-             bodyText.includes('apply') || 
-             bodyText.includes('aplica'));
-          
-          // Check for expired/removed indicators
-          const expiredIndicators = [
-            'job not found', 'position not found', 'job expired', 
-            'posting expired', 'no longer available', 
-            'nu mai este disponibil', 'locul nu mai este disponibil',
-            '404', 'not found'
-          ];
-          
-          const isExpired = expiredIndicators.some(indicator => bodyText.includes(indicator));
-          
-          return { 
-            title, 
-            location, 
-            description: description?.substring(0, 500), 
-            isJobPage: hasJobIndicators && !isExpired,
-            isExpired,
-            url: jobUrl,
-            pageTitle: document.title
-          };
-        }, url);
-        
-        if (jobData.isJobPage && jobData.title) {
-          jobs.push({
-            url: jobData.url,
-            title: jobData.title,
-            location: jobData.location ? [jobData.location] : ['România'],
-            department: 'Unknown',
-            workmode: 'on-site',
-            tags: []
-          });
-          console.log(`    ✅ Valid job: ${jobData.title}`);
-        } else {
-          console.log(`    ❌ Not a valid job page${jobData.isExpired ? ' (expired)' : ''}`);
-        }
-        
-        // Small delay to avoid rate limiting
-        await sleep(1000);
-        
-      } catch (err) {
-        console.log(`    ⚠️ Error checking job: ${err.message}`);
-      }
-    }
     
     console.log(`Found ${jobs.length} valid jobs on BCR careers page`);
     return jobs;
@@ -164,76 +96,8 @@ async function scrapeBCRJobs() {
     if (browser) await browser.close();
   }
 }
+        
 
-/**
- * Verifies if a job page is still valid (not expired/removed)
- * Uses Puppeteer to check page content
- * @param {string} url - Job URL to verify
- * @param {string} title - Job title for logging
- * @returns {Promise<boolean>} - True if job page is still valid
- */
-async function verifyJobPage(url, title = 'Unknown') {
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-    });
-    
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
-    const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: TIMEOUT });
-    
-    // Check for 404 or error status
-    if (!response || response.status() >= 400) {
-      console.log(`    ❌ HTTP ${response?.status() || 'ERR'} - ${title}`);
-      return false;
-    }
-    
-    // Check page content for expiration indicators
-    const pageData = await page.evaluate(() => {
-      const bodyText = document.body.innerText.toLowerCase();
-      
-      const expiredIndicators = [
-        'job not found', 'position not found', 'job expired', 
-        'posting expired', 'no longer available', 
-        'nu mai este disponibil', 'locul nu mai este disponibil',
-        '404', 'not found'
-      ];
-      
-      const isExpired = expiredIndicators.some(indicator => bodyText.includes(indicator));
-      
-      // Check if it still looks like a job page
-      const jobIndicators = [
-        'job', 'position', 'role', 'responsibilities', 'requirements',
-        'loc de munca', 'job description', 'apply', 'aplica', 'candidat'
-      ];
-      
-      const hasJobContent = jobIndicators.some(indicator => bodyText.includes(indicator));
-      
-      return { isExpired, hasJobContent, title: document.title };
-    });
-    
-    if (pageData.isExpired) {
-      console.log(`    ❌ Job expired: ${pageData.title}`);
-      return false;
-    }
-    
-    if (!pageData.hasJobContent) {
-      console.log(`    ❌ Not a job page anymore: ${pageData.title}`);
-      return false;
-    }
-    
-    return true;
-    
-  } catch (err) {
-    console.log(`    ⚠️ Error verifying job: ${err.message}`);
-    return false;
-  } finally {
-    if (browser) await browser.close();
-  }
-}
 
 // ============================================================================
 // DATA TRANSFORMATION - Map to Job Model schema
@@ -290,7 +154,8 @@ function transformJobsForSOLR(payload) {
     'Suceava', 'Bistrița', 'Bistrita', 'Tulcea', 'Călărași', 'Calarasi',
     'Giurgiu', 'Alba Iulia', 'Slatina', 'Piatra Neamț', 'Piatra Neamt', 'Roman',
     'Dumbrăvița', 'Dumbravita', 'Voluntari', 'Popești-Leordeni', 'Popesti-Leordeni',
-    'Chitila', 'Mogoșoaia', 'Mogosoaia', 'Otopeni', 'Calarasi', 'Timis'
+    'Chitila', 'Mogoșoaia', 'Mogosoaia', 'Otopeni', 'Calarasi', 'Timis',
+    'Caras-Severin', 'Caraș-Severin'
   ];
 
   const citySet = new Set(romanianCities.map(c => c.toLowerCase()));
@@ -333,8 +198,6 @@ function transformJobsForSOLR(payload) {
  * Main function - orchestrates the complete scraping workflow
  */
 async function main() {
-  const testOnlyOnePage = process.argv.includes("--test");
-  
   try {
     // Step 1: Validate company via ANAF
     console.log("=== Step 1: Validate company via ANAF ===\n");
@@ -371,43 +234,6 @@ async function main() {
     console.log(`\n=== Step 7: Upsert ${payload.jobs.length} jobs to SOLR ===\n`);
     await upsertJobs(payload.jobs);
 
-    // Step 8: Delete old jobs not found in current scrape
-    console.log("\n=== Step 8: Clean up old jobs ===\n");
-    const currentUrls = new Set(scrapedJobs.map(j => j.url));
-    
-    if (existingJobs.docs) {
-      const oldJobs = existingJobs.docs.filter(job => !currentUrls.has(job.url));
-      
-      if (oldJobs.length > 0) {
-        console.log(`Found ${oldJobs.length} old jobs to delete:`);
-        for (const job of oldJobs) {
-          console.log(`  Deleting: ${job.title} - ${job.url}`);
-          await deleteJobByUrl(job.url);
-        }
-      } else {
-        console.log("No old jobs to delete.");
-      }
-    }
-
-    // Step 9: Verify all current jobs are still valid (not expired)
-    console.log("\n=== Step 9: Verify current jobs with Puppeteer ===\n");
-    console.log(`Checking ${scrapedJobs.length} scraped jobs for expiration...`);
-    
-    for (const job of scrapedJobs) {
-      try {
-        const isValid = await verifyJobPage(job.url);
-        if (!isValid) {
-          console.log(`  ❌ Job expired or invalid: ${job.title} - ${job.url}`);
-          await deleteJobByUrl(job.url);
-        } else {
-          console.log(`  ✅ Job still valid: ${job.title}`);
-        }
-        await sleep(1000); // Rate limiting
-      } catch (err) {
-        console.log(`  ⚠️ Error verifying job: ${job.title} - ${err.message}`);
-      }
-    }
-
     console.log("\n✅ Scraping completed successfully!");
 
   } catch (err) {
@@ -420,7 +246,7 @@ async function main() {
 // EXPORTS
 // ============================================================================
 
-export { scrapeBCRJobs, mapToJobModel };
+export { scrapeBCRJobs, mapToJobModel, transformJobsForSOLR };
 
 // ============================================================================
 // ENTRY POINT
