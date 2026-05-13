@@ -29,11 +29,26 @@ jobs:
           
       - name: Check for new jobs
         run: |
-          if [ -f jobs.json ]; then
+          if [ -f jobs.json ] || [ -f docs/jobs.json ]; then
             echo "New jobs found:"
-            cat jobs.json | jq '.jobs | length'
+            jq '.jobs | length' docs/jobs.json 2>/dev/null || jq '.jobs | length' jobs.json 2>/dev/null || echo "0"
           else
             echo "No new jobs or scrape failed"
+          fi
+          
+      - name: Commit updated jobs.json to repo
+        run: |
+          if [ -f docs/jobs.json ]; then
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git add docs/jobs.json
+            if git diff --cached --quiet; then
+              echo "No changes to docs/jobs.json"
+            else
+              git commit -m "Update docs/jobs.json with latest scrape results"
+              git pull --rebase origin master
+              git push
+            fi
           fi
           
       - name: Upload jobs JSON
@@ -44,4 +59,5 @@ jobs:
           path: |
             jobs.json
             jobs_existing.json
+            docs/jobs.json
           retention-days: 7

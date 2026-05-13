@@ -11,6 +11,7 @@
  * - Upserting jobs to Solr
  */
 
+import fs from "fs";
 import puppeteer from "puppeteer";
 import { validateAndGetCompany } from "./company.js";
 import { querySOLR, upsertJobs } from "./solr.js";
@@ -233,6 +234,12 @@ async function main() {
     // Step 7: Upsert to SOLR
     console.log(`\n=== Step 7: Upsert ${payload.jobs.length} jobs to SOLR ===\n`);
     await upsertJobs(payload.jobs);
+
+    // Step 8: Save jobs to local JSON file for GitHub Pages
+    console.log(`\n=== Step 8: Saving ${payload.jobs.length} jobs to docs/jobs.json ===\n`);
+    const jobsJson = JSON.stringify({ jobs: payload.jobs }, null, 2);
+    fs.writeFileSync("docs/jobs.json", jobsJson, "utf-8");
+    console.log("✅ Saved jobs to docs/jobs.json");
 
     console.log("\n✅ Scraping completed successfully!");
 

@@ -309,23 +309,12 @@
   <script>
     async function loadStats() {
       try {
-        const res = await fetch('https://api.peviitor.ro/v1/search/?company=BCR&page=1', {
-          headers: {
-            'origin': 'https://peviitor.ro',
-            'referer': 'https://peviitor.ro/'
-          }
-        });
-        const data = await res.json();
-        document.getElementById('jobsCount').textContent = data.response.numFound;
+        const jobsRes = await fetch('./jobs.json', { cache: 'no-cache' });
+        const jobsData = await jobsRes.json();
+        const jobs = jobsData.jobs || [];
         
-        const vRes = await fetch('https://api.peviitor.ro/v1/search/?company=BCR&status=verified&page=1', {
-          headers: {
-            'origin': 'https://peviitor.ro',
-            'referer': 'https://peviitor.ro/'
-          }
-        });
-        const vData = await vRes.json();
-        document.getElementById('verifiedCount').textContent = vData.response.numFound;
+        document.getElementById('jobsCount').textContent = jobs.length;
+        document.getElementById('verifiedCount').textContent = jobs.length;
         
         const now = new Date();
         const time = now.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
@@ -335,57 +324,21 @@
         
         const jobsList = document.getElementById('jobsListContent');
         jobsList.innerHTML = '';
-        
-        let page = 1;
-        let moreJobs = true;
-        while (moreJobs) {
-          const jobsRes = await fetch(`https://api.peviitor.ro/v1/search/?company=BCR&page=${page}`, {
-            headers: {
-              'origin': 'https://peviitor.ro',
-              'referer': 'https://peviitor.ro/'
-            }
-          });
-          const jobsData = await jobsRes.json();
-          if (jobsData.response.docs.length === 0) {
-            moreJobs = false;
-          } else {
-            jobsData.response.docs.forEach(job => {
-              const li = document.createElement('li');
-              li.innerHTML = `<a href="${job.url}" target="_blank">${job.job_title}</a>`;
-              jobsList.appendChild(li);
-            });
-            page++;
-          }
-        }
-        
-        const cRes = await fetch('https://api.peviitor.ro/v1/company/?cif=361757', {
-          headers: {
-            'origin': 'https://peviitor.ro',
-            'referer': 'https://peviitor.ro/'
-          }
+        jobs.forEach(job => {
+          const li = document.createElement('li');
+          li.innerHTML = `<a href="${job.url}" target="_blank">${job.title}</a>`;
+          jobsList.appendChild(li);
         });
-        const cData = await cRes.json();
-        const comp = cData.company;
-        const detailsDiv = document.querySelector('.company-details');
-        detailsDiv.innerHTML = `
-          <div class="detail-item"><strong>CIF:</strong> ${comp.id}</div>
-          <div class="detail-item"><strong>Brand:</strong> ${comp.brand}</div>
-          <div class="detail-item"><strong>Status:</strong> ${comp.status}</div>
-          <div class="detail-item"><strong>Orașe:</strong> ${comp.location.join(', ')}</div>
-          <div class="detail-item"><strong>Website:</strong> <a href="${comp.website[0]}" target="_blank">${comp.website[0]}</a></div>
-          <div class="detail-item"><strong>Career:</strong> <a href="${comp.career[0]}" target="_blank">${comp.career[0]}</a></div>
-          <div class="detail-item"><strong>Ultimul scrape:</strong> ${comp.lastScraped}</div>
-        `;
       } catch(e) {
-        document.getElementById('jobsCount').textContent = '7';
-        document.getElementById('verifiedCount').textContent = '7';
+        document.getElementById('jobsCount').textContent = '0';
+        document.getElementById('verifiedCount').textContent = '0';
         const now = new Date();
         document.getElementById('lastRunTime').textContent = now.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
         document.getElementById('lastRunDate').textContent = now.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        document.getElementById('jobsListContent').innerHTML = '<li>Nu s-au putut încărca joburile. Rulează scraperul manual din GitHub Actions.</li>';
       }
     }
     loadStats();
-    setInterval(loadStats, 30000);
   </script>
 </body>
 </html>
